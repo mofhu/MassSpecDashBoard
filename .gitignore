@@ -1,6 +1,7 @@
 # repo specific files
 /test
 /report
+master_ignored_from_push.ipynb
 
 # macOS related
 *.DS_Store
