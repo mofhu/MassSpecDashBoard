@@ -1,6 +1,7 @@
 # repo specific files
 /test
 /report
+*.png
 master_ignored_from_push.ipynb
 
 # macOS related
