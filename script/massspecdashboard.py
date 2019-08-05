@@ -142,8 +142,13 @@ def barplot(data, x, y, filename='', output='png'):
 
 
 def main():
-    """config file format YAML:
+    """Main function for Mass Spec DashBoard.
+    input: config file format YAML:
         - identifier: file name (no suffix)
+    output:
+        - a TXT file of meta data and result DataFrame
+        - several PNG figures of protein, peptide, and PSM
+        - a PDF file of three level figures
     """
     import yaml
     parser = argparse.ArgumentParser()
@@ -152,6 +157,13 @@ def main():
     args = parser.parse_args()
     config_file = args.config_file
     config = yaml.load(open(config_file).read(), Loader=yaml.CLoader)
+
+    from time import localtime, asctime
+    file_out = open('massspecdashboard.log', 'w')
+    file_out.write('MassSpecDashBoard' + '\n')
+    file_out.write('Timestamp: ' + asctime(localtime()) + '\n')
+    file_out.write('Config file:\n')
+    file_out.write(open(config_file).read())
 
     result = {'protein':[],
               'peptide':[],
@@ -176,12 +188,16 @@ def main():
         result['PSM'].append(tables.PSM)
     # protein result
     protein_result = filter_protein_count(pd.concat(result['protein']), threshold=threshold['protein'])
+    file_out.write('---\nResult:\n')
+    file_out.write('Protein:\n' + protein_result.to_string(index=False) + '\n')
     barplot(data=protein_result, x='Identifier', y='Accession', filename='protein')
     # peptide result
     peptide_result = filter_peptide_count(pd.concat(result['peptide']), threshold=threshold['peptide'])
+    file_out.write('Peptide:\n' + peptide_result.to_string(index=False) + '\n')
     barplot(data=peptide_result, x='Identifier', y='Mod_sequence', filename='peptide')
     # PSM result
     PSM_result = filter_PSM_count(pd.concat(result['PSM']), threshold=threshold['PSM'])
+    file_out.write('PSM:\n' + PSM_result.to_string(index=False) + '\n')
     barplot(data=PSM_result, x='Identifier', y='Mod_sequence', filename='PSM')
     # pdf single report
     from matplotlib.backends.backend_pdf import PdfPages
