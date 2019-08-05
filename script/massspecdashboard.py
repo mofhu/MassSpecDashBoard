@@ -127,15 +127,18 @@ def filter_PSM_count(PSM_db, threshold=None):
     return flatten
 
 
-def barplot(data, x, y, filename=''):
+def barplot(data, x, y, filename='', output='png'):
     # set seaborn and annotation codes
     plt.figure(figsize=(6, 8))
     sns.set(style='whitegrid')
     splot = sns.barplot(data=data, x=x, y=y)
     for p in splot.patches:
         splot.annotate(format(p.get_height(), ), (p.get_x() + p.get_width() / 2., p.get_height()), ha = 'center', va = 'center', xytext = (0, 10), textcoords = 'offset points')
-    plt.title(filename)
-    plt.savefig(filename+'.png')
+    if output == 'png':
+        plt.title(filename)
+        plt.savefig(filename+'.png')
+    else:
+        output.savefig()
 
 
 def main():
@@ -180,6 +183,15 @@ def main():
     # PSM result
     PSM_result = filter_PSM_count(pd.concat(result['PSM']), threshold=threshold['PSM'])
     barplot(data=PSM_result, x='Identifier', y='Mod_sequence', filename='PSM')
+    # pdf single report
+    from matplotlib.backends.backend_pdf import PdfPages
+    # TODO(mofhu): update pdf export to a better output clarity
+    pp = PdfPages('massspecdashboard-report.pdf')
+
+    barplot(data=protein_result, x='Identifier', y='Accession', filename='protein', output=pp)
+    barplot(data=peptide_result, x='Identifier', y='Mod_sequence', filename='peptide', output=pp)
+    barplot(data=PSM_result, x='Identifier', y='Mod_sequence', filename='PSM', output=pp)
+    pp.close()
 
 if __name__ == '__main__':
     main()
