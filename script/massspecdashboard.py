@@ -71,7 +71,7 @@ class Search_Result():
         return self
 
 
-def filter_protein_count(protein_db):
+def filter_protein_count(protein_db, threshold=None):
     # protein filter
     protein_fdr = protein_db[protein_db['Exp. q-value: Combined'] < 0.01]
     protein_master = protein_fdr.loc[protein_fdr['Master'].str.match('IsMasterProtein$')]  # use regex to filter IsMasterProteinCandidate
@@ -79,47 +79,76 @@ def filter_protein_count(protein_db):
                            index='Identifier', aggfunc='count')
     # flatten pivot table to normal df
     flatten = pd.DataFrame(pivot.to_records())
+    if threshold is not None:
+        flatten = flatten.append(
+            {
+                'Identifier': "THRESHOLD",
+                'Accession': threshold,
+            },
+            ignore_index=True)
     print('protein count after FDR cutoff:')
     print(flatten)
     return flatten
 
 
-def filter_peptide_count(peptide_db):
+def filter_peptide_count(peptide_db, threshold=None):
     # peptide filter
     pivot = pd.pivot_table(peptide_db, values='Mod_sequence',
                            index='Identifier', aggfunc='count')
     # flatten pivot table to normal df
     flatten = pd.DataFrame(pivot.to_records())
+    if threshold is not None:
+        flatten = flatten.append(
+            {
+                'Identifier': "THRESHOLD",
+                'Mod_sequence': threshold,
+            },
+            ignore_index=True)
     print('peptide count:')
     print(flatten)
     return flatten
 
 
-def filter_PSM_count(PSM_db):
+def filter_PSM_count(PSM_db, threshold=None):
     # peptide filter
     pivot = pd.pivot_table(PSM_db, values='Mod_sequence',
                            index='Identifier', aggfunc='count')
     # flatten pivot table to normal df
     flatten = pd.DataFrame(pivot.to_records())
+    if threshold is not None:
+        flatten = flatten.append(
+            {
+                'Identifier': "THRESHOLD",
+                'Mod_sequence': threshold,
+            },
+            ignore_index=True)
     print('PSM count:')
     print(flatten)
     return flatten
 
 
-def barplot(data, x, y, filename=''):
+def barplot(data, x, y, filename='', output='png'):
     # set seaborn and annotation codes
     plt.figure(figsize=(6, 8))
     sns.set(style='whitegrid')
     splot = sns.barplot(data=data, x=x, y=y)
     for p in splot.patches:
         splot.annotate(format(p.get_height(), ), (p.get_x() + p.get_width() / 2., p.get_height()), ha = 'center', va = 'center', xytext = (0, 10), textcoords = 'offset points')
-    plt.title(filename)
-    plt.savefig(filename+'.png')
+    if output == 'png':
+        plt.title(filename)
+        plt.savefig(filename+'.png')
+    else:
+        output.savefig()
 
 
 def main():
-    """config file format YAML:
+    """Main function for Mass Spec DashBoard.
+    input: config file format YAML:
         - identifier: file name (no suffix)
+    output:
+        - a TXT file of meta data and result DataFrame
+        - several PNG figures of protein, peptide, and PSM
+        - a PDF file of three level figures
     """
     import yaml
     parser = argparse.ArgumentParser()
@@ -127,27 +156,58 @@ def main():
     parser.add_argument('config_file', help='config file in yaml format.')
     args = parser.parse_args()
     config_file = args.config_file
-    files = yaml.load(open(config_file).read(), Loader=yaml.CLoader)
+    config = yaml.load(open(config_file).read(), Loader=yaml.CLoader)
+
+    from time import localtime, asctime
+    file_out = open('massspecdashboard.log', 'w')
+    file_out.write('MassSpecDashBoard' + '\n')
+    file_out.write('Timestamp: ' + asctime(localtime()) + '\n')
+    file_out.write('Config file:\n')
+    file_out.write(open(config_file).read())
 
     result = {'protein':[],
               'peptide':[],
               'PSM':[]}
-    for identifier in files:
-        filename = files[identifier]
+    if 'THRESHOLD' in config:
+        threshold = config['THRESHOLD']
+    else:
+        # init with None
+        threshold = {
+            'protein': None,
+            'peptide': None,
+            'PSM': None,
+        }
+    for identifier in config:
+        if identifier == 'THRESHOLD':
+            continue
+        filename = config[identifier]
         tables = Search_Result(filename=filename, identifier=identifier,
                                 search_workflow='ID_PD')
         result['protein'].append(tables.protein)
         result['peptide'].append(tables.peptide)
         result['PSM'].append(tables.PSM)
     # protein result
-    protein_result = filter_protein_count(pd.concat(result['protein']))
+    protein_result = filter_protein_count(pd.concat(result['protein']), threshold=threshold['protein'])
+    file_out.write('---\nResult:\n')
+    file_out.write('Protein:\n' + protein_result.to_string(index=False) + '\n')
     barplot(data=protein_result, x='Identifier', y='Accession', filename='protein')
     # peptide result
-    peptide_result = filter_peptide_count(pd.concat(result['peptide']))
+    peptide_result = filter_peptide_count(pd.concat(result['peptide']), threshold=threshold['peptide'])
+    file_out.write('Peptide:\n' + peptide_result.to_string(index=False) + '\n')
     barplot(data=peptide_result, x='Identifier', y='Mod_sequence', filename='peptide')
     # PSM result
-    PSM_result = filter_PSM_count(pd.concat(result['PSM']))
+    PSM_result = filter_PSM_count(pd.concat(result['PSM']), threshold=threshold['PSM'])
+    file_out.write('PSM:\n' + PSM_result.to_string(index=False) + '\n')
     barplot(data=PSM_result, x='Identifier', y='Mod_sequence', filename='PSM')
+    # pdf single report
+    from matplotlib.backends.backend_pdf import PdfPages
+    # TODO(mofhu): update pdf export to a better output clarity
+    pp = PdfPages('massspecdashboard-report.pdf')
+
+    barplot(data=protein_result, x='Identifier', y='Accession', filename='protein', output=pp)
+    barplot(data=peptide_result, x='Identifier', y='Mod_sequence', filename='peptide', output=pp)
+    barplot(data=PSM_result, x='Identifier', y='Mod_sequence', filename='PSM', output=pp)
+    pp.close()
 
 if __name__ == '__main__':
     main()
