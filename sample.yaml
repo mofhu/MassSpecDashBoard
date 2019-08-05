@@ -1,0 +1,6 @@
+condition 1: path/to/condition1
+condition 2: path/to/condition2
+THRESHOLD:
+    protein: 4000
+    peptide: 22000
+    PSM: 25000
