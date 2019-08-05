@@ -1,7 +1,8 @@
+import argparse
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from matplotlib_venn import venn3
+# from matplotlib_venn import venn3
 
 class Search_Result():
     def __init__(self, filename='', identifier='',
@@ -47,16 +48,20 @@ class Search_Result():
             self.result['peptide'] = peptide[peptide_cols]
 
             # PSM: add a new Mod_sequence column
-            PSM_cols = ['Identifier', 'Mod_sequence','Spectrum File', 'First Scan',
-                        'Precursor Abundance', 'Intensity','Percolator q-Value', 'Percolator PEP',
-                        'Master Scan(s)', 'Isolation Interference [%]',
-                        'RT [min]','Master Protein Accessions']
+            PSM_cols = [
+                'Identifier', 'Mod_sequence','Spectrum File', 'First Scan',
+                'Precursor Abundance', 'Intensity','Percolator q-Value',
+                'Percolator PEP', 'Master Scan(s)', 'Isolation Interference [%]',
+                'RT [min]','Master Protein Accessions'
+            ]
             PSM = self.raw_result['PSM']
             PSM['Modifications'] = PSM['Modifications'].fillna('')
             PSM['Mod_sequence'] = PSM['Sequence'] +'.'+ PSM['Modifications']
             self.result['PSM'] = PSM[PSM_cols]
-        print('Read data at {}.\nProtein table {}.\nPeptide table {}.\n'
-              'PSM table {}.'.format(self.filename,
+
+        print('Read data identifier {} at {}.\nProtein table {}.\nPeptide table {}.\n'
+              'PSM table {}.'.format(self.identifier,
+                                     self.filename,
                                      self.result['protein'].shape,
                                      self.result['peptide'].shape,
                                      self.result['PSM'].shape))
@@ -69,7 +74,7 @@ class Search_Result():
 def filter_protein_count(protein_db):
     # protein filter
     protein_fdr = protein_db[protein_db['Exp. q-value: Combined'] < 0.01]
-    protein_master = protein_fdr.loc[protein_fdr['Master'].str.match('IsMasterProtein')]
+    protein_master = protein_fdr.loc[protein_fdr['Master'].str.match('IsMasterProtein$')]  # use regex to filter IsMasterProteinCandidate
     pivot = pd.pivot_table(protein_master, values='Accession',
                            index='Identifier', aggfunc='count')
     # flatten pivot table to normal df
@@ -113,23 +118,35 @@ def barplot(data, x, y, filename=''):
 
 
 def main():
-    # a brief tester
-    result1 = Search_Result(filename='test/two_files-PD_output/19-149_HM0522_GM-1', identifier='1x digestion',
-                        search_workflow='ID_PD')
-    # result1 = result1.read_result()
-    result2 = Search_Result(filename='test/two_files-PD_output/19-149_HM0522_GM-2', identifier='2x digestion',
-                        search_workflow='ID_PD')
-    # result2 = result2.read_result()
-    result3 = Search_Result(filename='test/two_files-PD_output/19-149_HM0522_GM-2', identifier='2x digestion-rep',
-                        search_workflow='ID_PD')
-    # result3 = result3.read_result()
-    protein_result = filter_protein_count(pd.concat([result1.protein, result2.protein,result3.protein]))
+    """config file format YAML:
+        - identifier: file name (no suffix)
+    """
+    import yaml
+    parser = argparse.ArgumentParser()
+    # one or more filename
+    parser.add_argument('config_file', help='config file in yaml format.')
+    args = parser.parse_args()
+    config_file = args.config_file
+    files = yaml.load(open(config_file).read(), Loader=yaml.CLoader)
+
+    result = {'protein':[],
+              'peptide':[],
+              'PSM':[]}
+    for identifier in files:
+        filename = files[identifier]
+        tables = Search_Result(filename=filename, identifier=identifier,
+                                search_workflow='ID_PD')
+        result['protein'].append(tables.protein)
+        result['peptide'].append(tables.peptide)
+        result['PSM'].append(tables.PSM)
+    # protein result
+    protein_result = filter_protein_count(pd.concat(result['protein']))
     barplot(data=protein_result, x='Identifier', y='Accession', filename='protein')
-    # peptide_result
-    peptide_result = filter_peptide_count(pd.concat([result1.peptide, result2.peptide, result3.peptide]))
+    # peptide result
+    peptide_result = filter_peptide_count(pd.concat(result['peptide']))
     barplot(data=peptide_result, x='Identifier', y='Mod_sequence', filename='peptide')
-    # PSM_result
-    PSM_result = filter_PSM_count(pd.concat([result1.PSM, result2.PSM, result3.PSM]))
+    # PSM result
+    PSM_result = filter_PSM_count(pd.concat(result['PSM']))
     barplot(data=PSM_result, x='Identifier', y='Mod_sequence', filename='PSM')
 
 if __name__ == '__main__':
