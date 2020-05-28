@@ -2,6 +2,7 @@
 /test
 /report
 *.png
+*.ipynb
 master_ignored_from_push.ipynb
 
 # macOS related
